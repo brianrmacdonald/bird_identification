@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 import tensorflow as tf
+import os
 
 def run_inference_for_single_image(model, image):
     image = np.asarray(image)
@@ -63,11 +64,12 @@ def get_labels(path):
     return labels_dict
 
 # open a TF model
-# model_path = 'F:/Dev/Python/image_recognition/models/ssd_inception_v2_coco_2018_01_28/saved_model/'
-model_path = 'F:/Dev/Python/image_recognition/models/ssd_mobilenet_v2_coco/saved_model/'
+model_dir = 'ssd_mobilenet_v2_coco'
+model_path = os.path.join(os.getcwd(), 'models/{}/saved_model'.format(model_dir))
 tf_model = tf.saved_model.load(model_path)
 tf_model = tf_model.signatures['serving_default']
-labels_path = 'F:/Dev/Python/image_recognition/models/labelmap.txt'
+
+labels_path = os.path.join(os.getcwd(), 'models/labelmap.txt')
 labels = get_labels(labels_path)
 
 cap = cv2.VideoCapture(0)
