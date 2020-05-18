@@ -3,6 +3,9 @@ import cv2
 import tensorflow as tf
 import os
 
+# local files
+import parse_input_args as prs
+
 def run_inference_for_single_image(model, image):
     image = np.asarray(image)
     # The input needs to be a tensor, convert it using `tf.convert_to_tensor`.
@@ -21,7 +24,7 @@ def run_inference_for_single_image(model, image):
 
     return output_dict
 
-def annotate_image(image, output_dict, conf_level):
+def annotate_image(image, output_dict, conf_level, object_list, frame_rate):
     y = image.shape[0]
     x = image.shape[1]
     # bounding boxes represent the distance of the box border from the
@@ -32,7 +35,14 @@ def annotate_image(image, output_dict, conf_level):
     font_fam = cv2.FONT_HERSHEY_SIMPLEX
     font_size = .3
     for det in range(output_dict['num_detections']):
-        if output_dict['detection_scores'][det] >= conf_level:
+        object_index = output_dict['detection_classes'][det]
+        object_label = labels[object_index]
+        object_score = output_dict['detection_scores'][det]
+        fr_text = 'frame rate: {: .1}'.format(et)
+        sz = cv2.getTextSize(fr_text, font_fam, .4, 1)
+        cv2.putText(image, fr_text, (int(x * .01), int(y * .99)), font_fam, .4, (0, 0, 0), 1)
+
+        if bool(object_score >= conf_level) & bool(object_label in object_list):
             box = output_dict['detection_boxes'][det]
             x1 = int(x * box[1])
             y1 = int(y * box[0])
@@ -40,8 +50,7 @@ def annotate_image(image, output_dict, conf_level):
             y2 = int(y * box[2])
             cv2.rectangle(image, (x1, y1), (x2, y2), (200, 200, 0), line_thickness)
 
-            object_index = output_dict['detection_classes'][det]
-            text = '{}: {: .1%}'.format(labels[object_index], output_dict['detection_scores'][det])
+            text = '{}: {: .1%}'.format(object_label, object_score)
             sz = cv2.getTextSize(text, font_fam, font_size, line_thickness)
             baseline = sz[1]
             # box around text
@@ -63,8 +72,10 @@ def get_labels(path):
 
     return labels_dict
 
+args = prs.read_args()
+
 # open a TF model
-model_dir = 'ssd_mobilenet_v2_coco'
+model_dir = args['model_dir']
 model_path = os.path.join(os.getcwd(), 'models/{}/saved_model'.format(model_dir))
 tf_model = tf.saved_model.load(model_path)
 tf_model = tf_model.signatures['serving_default']
@@ -72,27 +83,41 @@ tf_model = tf_model.signatures['serving_default']
 labels_path = os.path.join(os.getcwd(), 'models/labelmap.txt')
 labels = get_labels(labels_path)
 
-cap = cv2.VideoCapture(0)
+detection_list = args['detection_list']
+if detection_list is None:
+    detection_list = labels
+conf_th = args['confidence_threshold']
+
+cap = cv2.VideoCapture(args['camera_num'])
 if not cap.isOpened():
     print("Cannot open camera")
     exit()
 while True:
+    start = cv2.getTickCount()
     # Capture frame-by-frame
     ret, frame = cap.read()
     # if frame is read correctly ret is True
     if not ret:
         print("Can't receive frame (stream end?). Exiting ...")
         break
+    # resize the window
+    dim = (int(frame.shape[1] * args['scale_factor'])
+           , int(frame.shape[0] * args['scale_factor']))
+    frame = cv2.resize(frame, dim)
+
     # Our operations on the frame come here
     img = np.array(frame)
     od = run_inference_for_single_image(tf_model, img)
-    annotated_frame = annotate_image(frame, od, .5)
+    end = cv2.getTickCount()
+    et = (end - start) / cv2.getTickFrequency()
+
+    annotated_frame = annotate_image(frame, od, conf_level=conf_th, object_list=detection_list, frame_rate=et)
 
     # Display the resulting frame
     cv2.imshow('frame', frame)
 
     if cv2.waitKey(1) == ord('q'):
         break
-# When everything done, release the capture
+# release the capture
 cap.release()
 cv2.destroyAllWindows()
