@@ -27,6 +27,7 @@ def run_inference_for_single_image(model, image):
 def annotate_image(image, output_dict, conf_level, object_list, frame_rate):
     y = image.shape[0]
     x = image.shape[1]
+    new_image = image
     # bounding boxes represent the distance of the box border from the
     # [top, left, bottom, right] respectively
     # in cv2, point 1 is the top left and pt is the bottom right
@@ -40,7 +41,7 @@ def annotate_image(image, output_dict, conf_level, object_list, frame_rate):
         object_score = output_dict['detection_scores'][det]
         fr_text = 'frame rate: {: .1}'.format(et)
         sz = cv2.getTextSize(fr_text, font_fam, .4, 1)
-        cv2.putText(image, fr_text, (int(x * .01), int(y * .99)), font_fam, .4, (0, 0, 0), 1)
+        new_image = cv2.putText(new_image, fr_text, (int(x * .01), int(y * .99)), font_fam, .4, (0, 0, 0), 1)
 
         if bool(object_score >= conf_level) & bool(object_label in object_list):
             box = output_dict['detection_boxes'][det]
@@ -48,16 +49,16 @@ def annotate_image(image, output_dict, conf_level, object_list, frame_rate):
             y1 = int(y * box[0])
             x2 = int(x * box[3])
             y2 = int(y * box[2])
-            cv2.rectangle(image, (x1, y1), (x2, y2), (200, 200, 0), line_thickness)
+            new_image = cv2.rectangle(new_image, (x1, y1), (x2, y2), (200, 200, 0), line_thickness)
 
             text = '{}: {: .1%}'.format(object_label, object_score)
             sz = cv2.getTextSize(text, font_fam, font_size, line_thickness)
             baseline = sz[1]
             # box around text
-            cv2.rectangle(image, (x1, y1), (x1 + sz[0][0], y1 - sz[0][1] - line_thickness), (200, 200, 0), -1)
-            cv2.putText(image, text, (x1, y1 - line_thickness), cv2.FONT_HERSHEY_SIMPLEX, .3, (0, 0, 0), 1)
+            new_image = cv2.rectangle(new_image, (x1, y1), (x1 + sz[0][0], y1 - sz[0][1] - line_thickness), (200, 200, 0), -1)
+            new_image = cv2.putText(new_image, text, (x1, y1 - line_thickness), cv2.FONT_HERSHEY_SIMPLEX, .3, (0, 0, 0), 1)
 
-    return image
+    return new_image
 
 def get_labels(path):
     with open(labels_path, 'rb') as f:
@@ -85,7 +86,7 @@ labels = get_labels(labels_path)
 
 detection_list = args['detection_list']
 if detection_list is None:
-    detection_list = labels
+    detection_list = list(labels.values())
 conf_th = args['confidence_threshold']
 
 cap = cv2.VideoCapture(args['camera_num'])
@@ -114,7 +115,7 @@ while True:
     annotated_frame = annotate_image(frame, od, conf_level=conf_th, object_list=detection_list, frame_rate=et)
 
     # Display the resulting frame
-    cv2.imshow('frame', frame)
+    cv2.imshow('frame', annotated_frame)
 
     if cv2.waitKey(1) == ord('q'):
         break
