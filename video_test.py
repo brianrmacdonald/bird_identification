@@ -73,6 +73,33 @@ def get_labels(path):
 
     return labels_dict
 
+def zoom(image, level):
+    y_dim = image.shape[0]
+    x_dim = image.shape[1]
+    zoom_inc_x = x_dim * .1
+    zoom_inc_y = y_dim * .1
+    crop_x = zoom_inc_x * level
+    crop_y = zoom_inc_y * level
+    start_x = int(crop_x/2)
+    start_y = int(crop_y/2)
+    end_x = int(x_dim - crop_x)
+    end_y = int(y_dim - crop_y)
+    cropped_image = image[start_y:end_y, start_x:end_x]
+    final_image = cv2.resize(cropped_image, (x_dim, y_dim), interpolation=cv2.INTER_CUBIC)
+
+    return final_image
+
+def magnify(image, mag_level):
+    y_dim = image.shape[0]
+    x_dim = image.shape[1]
+    mag_inc_x = x_dim * .1
+    mag_inc_y = y_dim * .1
+    mag_x = int(mag_inc_x * mag_level + x_dim)
+    mag_y = int(mag_inc_y * mag_level + y_dim)
+    final_image = cv2.resize(image, (mag_x, mag_y), interpolation=cv2.INTER_CUBIC)
+
+    return final_image
+
 args = prs.read_args()
 
 # open a TF model
@@ -89,6 +116,8 @@ if detection_list is None:
     detection_list = list(labels.values())
 conf_th = args['confidence_threshold']
 
+scale_level = 0
+zoom_level = 0
 cap = cv2.VideoCapture(args['camera_num'])
 if not cap.isOpened():
     print("Cannot open camera")
@@ -102,23 +131,38 @@ while True:
         print("Can't receive frame (stream end?). Exiting ...")
         break
     # resize the window
-    dim = (int(frame.shape[1] * args['scale_factor'])
-           , int(frame.shape[0] * args['scale_factor']))
-    frame = cv2.resize(frame, dim)
+    new_img = frame
+    if zoom_level > 0:
+        new_img = zoom(frame, zoom_level)
+
+    if scale_level != 0:
+        new_img = magnify(new_img, scale_level)
 
     # Our operations on the frame come here
-    img = np.array(frame)
+    img = np.array(new_img)
     od = run_inference_for_single_image(tf_model, img)
     end = cv2.getTickCount()
     et = (end - start) / cv2.getTickFrequency()
 
-    annotated_frame = annotate_image(frame, od, conf_level=conf_th, object_list=detection_list, frame_rate=et)
+    annotated_frame = annotate_image(new_img, od, conf_level=conf_th, object_list=detection_list, frame_rate=et)
 
     # Display the resulting frame
-    cv2.imshow('frame', annotated_frame)
+    cv2.imshow('Camera {}'.format(args['camera_num']), annotated_frame)
 
-    if cv2.waitKey(1) == ord('q'):
+    # frame operations
+    k = cv2.waitKey(1)
+    if k == ord('q'):
         break
+    elif k == ord('z'):
+        zoom_level += 1
+    elif k == 26:  # ctrl-z
+        zoom_level -= 1
+        if zoom_level < 0:
+            zoom_level = 0
+    elif k == 109:  # lowercase m
+        scale_level += 1
+    elif k == 13:  # ctrl m
+        scale_level -= 1
 # release the capture
 cap.release()
 cv2.destroyAllWindows()
